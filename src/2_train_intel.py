@@ -8,7 +8,7 @@ Unsloth requires a CUDA/XPU GPU and cannot run on Intel Iris Xe iGPU on
 Windows. This script uses the standard stack which runs on CPU.
 
 Key features:
-  - LoRA adapters via peft (r=16, alpha=16) — only ~4M trainable params
+  - LoRA adapters via peft (r=16, alpha=16), ~4M trainable params
   - TimeBasedCheckpointCallback: saves a checkpoint every 1 hour
   - SFTTrainer (trl 0.24+) with TensorBoard logging
   - try/finally guarantees the final LoRA adapter is always saved
@@ -25,7 +25,7 @@ import sys
 import time
 
 # TrainerCallback imported at module level so TimeBasedCheckpointCallback
-# can be a proper subclass — dynamic __bases__ assignment doesn't work.
+# is a proper static subclass (no __bases__ assignment at runtime).
 from transformers import TrainerCallback
 
 # ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ for _dir in [FINAL_MODEL_DIR, HOURLY_CKPT_DIR, CHECKPOINT_DIR, LOG_DIR]:
     os.makedirs(_dir, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Hyper-parameters (tuned for CPU — small batch, gradient accumulation)
+# Hyper-parameters (tuned for CPU: small batch, gradient accumulation)
 # ---------------------------------------------------------------------------
 MAX_SEQ_LENGTH   = 256   # Keep short for CPU speed
 LORA_RANK        = 16
@@ -74,7 +74,7 @@ CHECKPOINT_EVERY_SECONDS = 3600  # 1 hour
 
 
 # =============================================================================
-# TimeBasedCheckpointCallback — proper TrainerCallback subclass
+# TimeBasedCheckpointCallback: proper TrainerCallback subclass
 # =============================================================================
 
 class TimeBasedCheckpointCallback(TrainerCallback):
@@ -215,7 +215,7 @@ def main() -> None:
     logger.info("Tokenizer loaded.")
 
     # ------------------------------------------------------------------
-    # Load base model (float32, no quantization — CPU compatible)
+    # Load base model (float32, no quantization, CPU compatible)
     # ------------------------------------------------------------------
     logger.info("Loading base model: %s (float32, CPU)...", MODEL_NAME)
     logger.info("This may take a few minutes on first run (downloading ~2.5 GB).")
@@ -230,7 +230,7 @@ def main() -> None:
     logger.info("Base model loaded.")
 
     # ------------------------------------------------------------------
-    # LoRA configuration — passed directly to SFTTrainer
+    # LoRA configuration: passed directly to SFTTrainer
     # ------------------------------------------------------------------
     lora_config = LoraConfig(
         r=LORA_RANK,

@@ -49,29 +49,29 @@ Classify the following banking customer query into one of 77 intent categories..
 ### Response:
 {intent_label_name}
 ```
-Integer labels (0–76) are resolved to string names via `LABEL_NAMES` list in `1_prepare_data.py`. This same list must remain consistent if the data script is ever modified.
+Integer labels (0 to 76) are resolved to string names via `LABEL_NAMES` list in `1_prepare_data.py`. This same list must remain consistent if the data script is ever modified.
 
-### Training Architecture (`2_train_intel.py` — CPU)
+### Training Architecture (`2_train_intel.py`, CPU)
 - **Base model**: loaded in float32 via `AutoModelForCausalLM` (no quantization on CPU)
 - **Adapters**: LoRA `r=16, alpha=16` via `peft.LoraConfig`, passed directly to `SFTTrainer(peft_config=...)`
 - **`TimeBasedCheckpointCallback(TrainerCallback)`**: saves to `checkpoints/hourly_backup/ckpt_YYYYMMDD_HHMMSS/` every 1800 seconds (30 min). Requires `callback.attach_trainer(trainer)` after `SFTTrainer` init.
-- **fp16/bf16**: both disabled — Intel Iris Xe does not support these reliably
+- **fp16/bf16**: both off; the Intel Iris Xe path trains in fp32
 - **Optimizer**: `adamw_torch` (not `paged_adamw_32bit` or `adamw_8bit`, which require CUDA)
 
 ### Colab Notebook (`colab/banking77_finetune.ipynb`)
 Self-contained notebook for Google Colab T4 GPU. Key differences from the local CPU scripts:
 - Uses **Unsloth** (`FastLanguageModel`) since CUDA is available on Colab
 - `load_in_4bit=True`, `max_seq_length=512`, `batch_size=8`, `packing=True`
-- **Optimizer**: `adamw_8bit` (bitsandbytes — saves VRAM)
+- **Optimizer**: `adamw_8bit` (bitsandbytes, saves VRAM)
 - **Checkpoint interval**: 1800s (30 min), saved to Google Drive at `MyDrive/banking77_finetune/`
-- Cell 9 is the resume cell — run it instead of cells 4–6 after a disconnect
+- Cell 9 is the resume cell: run it instead of cells 4 to 6 after a disconnect
 
 ### Recovery Logic (`3_resume_and_infer.py`)
 Model discovery priority: `models/final_lora` → `checkpoints/hourly_backup/` (newest by name) → `checkpoints/checkpoint-*` (highest step) → base model fallback. All paths are checked with `adapter_config.json` or `config.json` presence.
 
 ## Key Constraints
 
-- **`uv` only** — do not use `pip` directly; all installs go through `uv pip install`
-- **No fp16/bf16** — keep `fp16=False, bf16=False` in `SFTConfig`
-- **`dataloader_num_workers=0`** — required to avoid multiprocessing issues on Windows
-- **Unsloth source install** — the `unsloth/` directory in the repo root is a git clone, not a PyPI package; changes to it affect the installed package
+- **`uv` only**: do not use `pip` directly; all installs go through `uv pip install`
+- **No fp16/bf16**: keep `fp16=False, bf16=False` in `SFTConfig`
+- **`dataloader_num_workers=0`**: required to avoid multiprocessing issues on Windows
+- **Unsloth source install**: the `unsloth/` directory in the repo root is a git clone, not a PyPI package; changes to it affect the installed package

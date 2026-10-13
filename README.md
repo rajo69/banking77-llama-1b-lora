@@ -1,7 +1,7 @@
 # Fine-Tuning Llama-3.2-1B-Instruct on Banking77 Intent Classification
 
 > **90.21% exact-match accuracy** on 77-class intent classification (Banking77 test split, 2,775 / 3,076), **90.28%** with trie-constrained decoding
-> Single T4 GPU, 3 epochs, 25 minutes of training, QLoRA + rsLoRA + NEFTune
+> Single T4 GPU, 3 epochs, 25 minutes of training, QLoRA + rsLoRA + NEFTune · adapter on Hugging Face: [rajo0113/banking77-llama-1b-lora](https://huggingface.co/rajo0113/banking77-llama-1b-lora)
 
 ---
 
