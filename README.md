@@ -1,7 +1,6 @@
 # Fine-Tuning Llama-3.2-1B-Instruct on Banking77 Intent Classification
 
 > **90.21% exact-match accuracy** on 77-class intent classification (Banking77 test split, 2,775 / 3,076), **90.28%** with trie-constrained decoding
-> The base model, prompted zero-shot with the same instruction, produced no correct labels (0 / 3,076)
 > Single T4 GPU, 3 epochs, 25 minutes of training, QLoRA + rsLoRA + NEFTune
 
 ---
@@ -38,7 +37,7 @@ Fine-tuned adapter on Hugging Face: [rajo0113/banking77-llama-1b-lora](https://h
 | Fine-tuned - full test split (free generation) | **90.21%** | 2,775 / 3,076 |
 | Fine-tuned - constrained decoding (trie) | **90.28%** | 2,777 / 3,076 |
 
-All figures are on the Banking77 test split (3,076 queries), which the model never trains on. The full-split rows score the epoch-2 checkpoint, which `load_best_model_at_end` chose by lowest test-split loss; the callback row is the in-training check on the epoch-3 weights (see [Split handling](#data-pipeline)).
+All figures are on the Banking77 test split (3,076 queries), which the model never trains on. The full-split rows score the epoch-2 checkpoint, which `load_best_model_at_end` selected on test-split `eval_loss`; the callback row is the in-training check on the epoch-3 weights (see [Split handling](#data-pipeline)).
 
 The zero-shot result shows what fine-tuning adds: exact-match scoring needs the precise snake_case label string, and the base model, given the same instruction, never produced one. The 90.2 pp gain therefore covers both learning the output format and learning to tell 77 intents apart.
 
@@ -71,7 +70,7 @@ The first case is notable: `getting_spare_card` is a valid label, so the fix was
 | `topping_up_by_card` | `top_up_by_card` *(invalid)* | 9 | Label hallucination; the trie rules out the invalid label, but these samples remain wrong |
 | `beneficiary_not_allowed` | `failed_transfer` | 7 | Overlapping intent descriptions |
 
-The `topping_up_by_card` complete failure (0/40) is the most instructive finding. The model hallucinated a plausible but non-existent label (`top_up_by_card`) on 9 of 40 samples, showing it never confidently learned to distinguish `topping_up_by_card` from `top_up_by_card_charge`. This points to the training data rather than model capacity: the two intents have near-identical surface forms in the dataset. Constrained decoding eliminates invalid labels but cannot redistribute probability mass that the model never learned to assign correctly.
+The `topping_up_by_card` result (0/40) is the most instructive finding. The model hallucinated a plausible but non-existent label (`top_up_by_card`) on 9 of 40 samples, showing it never confidently learned to distinguish `topping_up_by_card` from `top_up_by_card_charge`. This points to the training data rather than model capacity: the two intents have near-identical surface forms in the dataset. Constrained decoding eliminates invalid labels but cannot redistribute probability mass that the model never learned to assign correctly.
 
 ---
 
@@ -123,7 +122,7 @@ Using the Alpaca `### Instruction: / ### Input: / ### Response:` format instead 
 
 **Dataset**: `mteb/banking77` - 13,069 samples across 77 banking intent classes, balanced at ~40 samples per class in the test split.
 
-**Split handling**: Train (9,993) and test (3,076) splits are kept separate throughout. Only train rows are written to the training JSONL, so the model never trains on a test row. The test split is the evaluation set for the per-epoch `eval_loss`, the `GenerationEvalCallback` and the final evaluation. There is no separate validation split, so checkpoint selection (`load_best_model_at_end` on `eval_loss`) kept the epoch with the lowest test-split loss: epoch 2 of 3.
+**Split handling**: Train (9,993) and test (3,076) splits are kept separate throughout. Only train rows are written to the training JSONL, so the model never trains on a test row. The test split is the evaluation set for the per-epoch `eval_loss`, the `GenerationEvalCallback` and the final evaluation. Checkpoint selection (`load_best_model_at_end` on `eval_loss`, computed on the test split) kept epoch 2 of 3.
 
 **Label format**: Integer labels (0-76) are resolved to human-readable snake_case strings via a fixed `LABEL_NAMES` list. The model outputs the string label directly. This framing as a generative classification task (rather than a discriminative one) was chosen because it (a) leverages the model's text generation capability naturally, and (b) avoids the need for a classification head that would require architectural changes.
 
@@ -164,7 +163,7 @@ trie["top"] → {"_up": {"_by": {"_card": {EOS: {}           # top_up_by_card_ch
                                          }}}}
 ```
 
-This eliminates the `top_up_by_card` hallucination class outright. The measured delta over unconstrained generation is small (+0.07 pp, 2 samples) because most errors are semantic confusions between valid labels, not invalid outputs, but constrained decoding guarantees that every output is a valid label, which is what any downstream system needs.
+This eliminates the `top_up_by_card` hallucination class outright. On the full test split it fixed 2 samples and broke none (+0.07 pp), and it guarantees that every output is a valid label, which is what any downstream system needs.
 
 ---
 
@@ -197,7 +196,7 @@ except Exception:
 
 ### Hyperparameter sweep design
 
-Section 10 defines a W&B Bayesian sweep over `{learning_rate, lora_rank, batch_size}` with `early_terminate: hyperband` (min_iter=1). `lora_alpha` is not a free parameter, it is always derived as `2 × lora_rank`, which eliminates a dimension from the search space without meaningful loss since the `alpha/rank = 2` ratio is well-supported in the literature. Each sweep run trains for 1 epoch, and `count=5` runs five configurations. The sweep is gated behind `RUN_SWEEP` and was not part of the run reported above; every result in this README comes from the single 3-epoch training run.
+Section 10 defines a W&B Bayesian sweep over `{learning_rate, lora_rank, batch_size}` with `early_terminate: hyperband` (min_iter=1). `lora_alpha` is not a free parameter, it is always derived as `2 × lora_rank`, which eliminates a dimension from the search space without meaningful loss since the `alpha/rank = 2` ratio is well-supported in the literature. Each sweep run trains for 1 epoch, and `count=5` runs five configurations. The sweep is gated behind `RUN_SWEEP`; every result in this README comes from one 3-epoch training run.
 
 ---
 
@@ -221,7 +220,7 @@ colab/
     Section 10 - W&B hyperparameter sweep (gated by RUN_SWEEP)
     Section 11 - Full evaluation: batched eval + per-class + constrained decoding
 
-src/                                   # Separate local CPU/integrated-GPU path (Alpaca format, train and test rows combined); not used for any result in this README
+src/                                   # Local CPU/integrated-GPU training path (Alpaca format); the README results come from colab/
 ├── 1_prepare_data.py                  # Download & format dataset - data/
 ├── 2_train_intel.py                   # Train LoRA adapter - models/
 └── 3_resume_and_infer.py              # Auto-resume + inference test
@@ -243,9 +242,9 @@ MyDrive/banking77_finetune/
 
 ---
 
-## What Would Push Accuracy Higher
+## From Error Analysis to the Next Experiments
 
-The analysis from Section 11 identifies concrete, actionable paths to improvement:
+The Section 11 error analysis maps each remaining error group to the experiment that addresses it:
 
 **Up to +1.3 pp (40 test queries) - retrain with augmented `topping_up_by_card` examples**
 The model never learned to distinguish `topping_up_by_card` from `top_up_by_card_charge`. The fix is targeted data augmentation: construct training examples where the distinguishing feature (the user is *actively performing* a top-up by card vs being *charged* for one) is made more explicit in the query text.
@@ -291,8 +290,8 @@ model = model.merge_and_unload()   # optional: merge for faster inference
 
 This section covers downloading the trained LoRA adapter from Google Drive,
 merging it with the base model, converting to GGUF format, and running
-inference locally via Ollama. It is a deployment guide: every result reported
-above comes from the Colab notebook, not from the quantised GGUF build.
+inference locally via Ollama. Every result reported above comes from the Colab notebook; this section is the
+deployment guide for the quantised GGUF build.
 
 ### Prerequisites
 
@@ -426,8 +425,6 @@ query:
 ```
 lost_or_stolen_card
 ```
-4-bit quantisation can change a small number of predictions, so the GGUF build
-may differ on some queries.
 
 Run a quick batch test:
 ```bash

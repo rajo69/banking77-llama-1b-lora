@@ -26,14 +26,14 @@ import sys
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Logging configuration — goes to both stdout and a log file
+# Logging configuration: goes to both stdout and a log file
 # ---------------------------------------------------------------------------
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -153,11 +153,11 @@ def main() -> None:
         logger.info("  Split '%-10s': %d samples, columns: %s",
                     split_name, len(split_data), split_data.column_names)
 
-    # 3. Combine all splits into a single list for fine-tuning
-    #    banking77 has 'train' and 'test' splits.
+    # 3. Convert the train split for fine-tuning
+    #    banking77 has 'train' and 'test' splits; the test split is kept for evaluation.
     all_records: list[dict[str, str]] = []
 
-    for split_name, split_data in raw.items():
+    for split_name, split_data in [("train", raw["train"])]:
         logger.info("Converting split '%s' (%d samples)...", split_name, len(split_data))
         try:
             converted = [convert_sample_to_alpaca(sample) for sample in split_data]
@@ -196,7 +196,7 @@ def main() -> None:
 
     # 6. Sanity-check: read back and validate first record
     logger.info("-" * 40)
-    logger.info("Sanity check — first record:")
+    logger.info("Sanity check, first record:")
     with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
         first_line = f.readline()
     first_record = json.loads(first_line)
